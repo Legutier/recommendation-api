@@ -1,0 +1,324 @@
+{% extends "material/base.html" %}
+{% import "material/utils.html" as util %}
+{% import "material/wtf.html" as wtf %}
+
+{% block styles %}
+{{super()}}
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+  <link rel="stylesheet" href="static/css/styles.css">
+{% endblock %}
+{% block scripts %}
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+  <script>
+    const gamesAutocomplete = JSON.parse('{{games_autocomplete | tojson }}');
+    const allTags = JSON.parse('{{all_tags | tojson }}');
+  </script>
+  <script>
+
+  let selectedGame = null;
+  let embedding = null;
+
+  function clearCheckboxTags() {
+    /*
+    Un-checks all of the check boxes
+    */
+    const _ = [].slice.call(document.getElementsByClassName('filled-in')).map(function(e) { e.removeAttribute('checked') })
+  }
+
+  function updateCollection(data){
+    /*
+    Add the tag button and checks the tag in the table
+    */
+    updateRelated(data);
+    clearCheckboxTags();
+    const tagEl = document.getElementById('tags');
+    tagEl.innerHTML = "";
+    data['tags'].forEach(function(tag){
+      tagEl.innerHTML += '<a class="waves-effect waves-light btn-small" style="margin-bottom: 5px; margin-right: 5px;" id="'+tag+'tag" onclick="removeTag(\''+tag+'\')">'+tag+'</a>'
+      document.getElementById(tag+'CheckboxTag').setAttribute('checked', 'checked')
+    });
+  }
+
+  function updateRelated(data){
+    /*
+    Updates the related games in the table
+    */
+    const el = document.getElementById('recGamesContainer');
+    el.classList.remove('hide');
+    const tableEl = document.getElementById('recGames');
+    const tbody = tableEl.children[1];
+    tbody.innerHTML = "";
+    data['related'].forEach(function(game){
+      tbody.innerHTML += '<tr><td>'+game[0]+'</td><td>'+game[1]+'</td>';
+    });
+    setTimeout(function(){el.style.opacity = '1';}, 200)
+  }
+
+  function getRecommendations(game){
+    /*
+    Makes a post request to get the related games for the selected game
+    */
+    selectedGame = game;
+    $.ajax({
+      url: '/recommendation',
+      type: 'POST',
+      contentType: 'application/json; charset=utf-8',
+      data: JSON.stringify({'games': [game, ]}),
+      })
+      .done(function(result){
+          updateCollection(result);
+          embedding = result['embedding'];
+      })
+  }
+
+  function updateRecommendation(tag, modification) {
+    /*
+    Make a post request to modify the embedding and return updated recommendations
+    */
+    $.ajax({
+      url: '/modify-embedding',
+      type: 'POST',
+      contentType: 'application/json; charset=utf-8',
+      data: JSON.stringify({
+        'game':selectedGame,
+        'tag': tag,
+        'modification': modification,
+        'embedding': embedding,
+      }),
+    })
+    .done(function(result){
+      updateRelated(result);
+      embedding = result['embedding'];
+    })
+
+  }
+
+  function removeTag(tag){
+    /*
+    Function on the tag buttons to remove the tag from the embedding
+    */
+    updateTag(tag);
+    document.getElementById(tag+'CheckboxTag').removeAttribute('checked');
+    var el = document.getElementById(tag+'tag');
+    el.classList.add('disabled');
+  }
+
+  function updateTag(tag) {
+    /*
+    Updates the status of the tag in both the tag table and the button (if present)
+    */
+    const el = document.getElementById(tag+'CheckboxTag');
+    if (el.hasAttribute('checked')) {
+      const tagButton = document.getElementById(tag+'tag');
+      document.getElementById(tag+'CheckboxTag').removeAttribute('checked');
+      if (tagButton) {
+        tagButton.classList.add('disabled');
+      }
+      updateRecommendation(tag, 'subtraction')
+    } else {
+      document.getElementById(tag+'CheckboxTag').setAttribute('checked', 'checked');
+      updateRecommendation(tag, 'addition')
+    }
+  }
+
+  // Game autocomplete init
+  const acGame = document.querySelector('.gameAutocomplete');
+  const instanceGame = M.Autocomplete.init(acGame, {
+    minLength: 3,
+    data: gamesAutocomplete,
+    onAutocomplete: getRecommendations
+  });
+
+  // Tag autocomplete init
+  const acTag = document.querySelector('.tagAutocomplete');
+  const instanceTag = M.Autocomplete.init(acTag, {
+    minLength: 2,
+    data: Object.assign(...allTags.map(k => ({[k]: null}))),
+    onAutocomplete: updateTag
+  });
+
+  // parallax init, only works when both inits are used.
+  $(document).ready(function(){
+    $('.parallax').parallax();
+  });
+  document.addEventListener('DOMContentLoaded', function() {
+    const elems = document.querySelectorAll('.parallax');
+    const _ = M.Parallax.init(elems);
+  });
+
+
+  </script>
+{{super()}}
+{% endblock %}
+
+{% block content %}
+
+  <nav>
+    <div class="nav-wrapper" style="background-color: #516290">
+      <a class="brand-logo center" style="background-color: #516290">Steam Game Recommender</a>
+    </div>
+  </nav>
+  <div class="parallax-container">
+    <div class="parallax">
+      <img src="static/images/parallax3.jpg">
+    </div>
+  </div>
+  <div class="container">
+    <div class="section">
+      <div>
+        <div class="row">
+          <div class="col s12 m8 l8 offset-m2 offset-l2">
+            <p>
+              This Steam game recommender was built with a neural network using game tag data. The tag data is based on
+              users who have tagged a game with a given tag e.g. “FPS” for “Counter-Strike: Global Offensive” has been
+              tagged over 84,000 times. These tags are then used by the neural network to understand how these tags are
+              “related” to the game.<br><br>
+              This recommendation engine is slightly different from other engines in that it is possible for the user to
+              modify their recommendations. By entering a game below, the recommendations for that game is returned. It is
+              now possible to change the recommendation by removing or adding the influence of a given tag. For example
+              searching for “Total War: WARHAMMER II” will return a set of recommendations and below it the user defined
+              tags. It now possible to remove the “Fantasy” influence of the game recommendation by clicking the “Fantasy”
+              tag button or searching for it in the tag table, doing so will return a new list of recommendations. The
+              influence of other tags can be added by searching for them and selecting them in the tag table.
+            </p>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col s12 m4">
+            <div class="icon-block">
+              <h2 class="center light-blue-text"><i class="large material-icons">videogame_asset</i></h2>
+              <h5 class="center">{{ n_games }} Games in the Recommendation Engine</h5>
+            </div>
+          </div>
+          <div class="col s12 m4">
+            <div class="icon-block">
+              <h2 class="center light-blue-text"><i class="large material-icons">label</i></h2>
+              <h5 class="center">{{ n_tags }} Tags to Modify the Recommendations with</h5>
+            </div>
+          </div>
+          <div class="col s12 m4">
+            <div class="icon-block">
+              <h2 class="center light-blue-text"><i class="large material-icons">update</i></h2>
+              <h5 class="center">Last Updated 1st February 2020</h5>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+  {{ container() }}
+  <div class="row">
+    <div class="col s12 m8 l8 offset-m2 offset-l2">
+      <div class="row">
+        <h4>Search for a Game</h4>
+        <div class="input-field col s12">
+          <i class="material-icons prefix">videogame_asset</i>
+          <input type="text" id="autocomplete-game-input" class="gameAutocomplete">
+          <label for="autocomplete-game-input">Enter a Game</label>
+        </div>
+      </div>
+    </div>
+  </div>
+  {{ enddiv() }}
+  <div class="container">
+    <div class="row hide" id="recGamesContainer">
+      <div class="col s12 m8 l8 offset-m2 offset-l2">
+        <h3>Similar Games</h3>
+        <table class="highlight" id="recGames">
+          <thead>
+          <tr>
+            <th>Game</th>
+            <th>Similarity</th>
+          </tr>
+          </thead>
+          <tbody>
+          </tbody>
+        </table>
+        <h4>Modify Recommendations</h4>
+        <p>
+          Modify the recommendations above by clicking the user defined tags below to remove that tags influence from the recommendation
+          or search for a tag in the tag table to add / remove a tags influence from the recommendation.
+        </p>
+        <h5>User Tags</h5>
+        <div class="row">
+          <div id="tags">
+          </div>
+          <div class="col s12">
+            <div class="row">
+              <h5>Tag Table</h5>
+              <div class="input-field col s12">
+                <i class="material-icons prefix">label</i>
+                <input type="text" id="autocomplete-tag-input" class="tagAutocomplete">
+                <label for="autocomplete-tag-input">Search for a Tag</label>
+              </div>
+            </div>
+          </div>
+          <table class="highlight" id="tagTable">
+            <tbody>
+            {% for i in range(0, all_tags|length, 5) %}
+            <tr>
+              {% if all_tags[i] %}
+              <td>
+                <label>
+                  <input type="checkbox" class="filled-in" id="{{all_tags[i]}}CheckboxTag" checked="checked" onclick="updateTag('{{all_tags[i]}}')"/>
+                  <span>{{ all_tags[i] }}</span>
+                </label>
+              </td>
+              {% endif %}
+              {% if all_tags[i+1] %}
+              <td>
+                <label>
+                  <input type="checkbox" class="filled-in" id="{{all_tags[i+1]}}CheckboxTag" checked="checked" onclick="updateTag('{{all_tags[i+1]}}')"/>
+                  <span>{{ all_tags[i+1] }}</span>
+                </label>
+              </td>
+              {% endif %}
+              {% if all_tags[i+2] %}
+              <td>
+                <label>
+                  <input type="checkbox" class="filled-in" id="{{all_tags[i+2]}}CheckboxTag" checked="checked" onclick="updateTag('{{all_tags[i+2]}}')"/>
+                  <span>{{ all_tags[i+2] }}</span>
+                </label>
+              </td>
+              {% endif %}
+              {% if all_tags[i+3] %}
+              <td>
+                <label>
+                  <input type="checkbox" class="filled-in" id="{{all_tags[i+3]}}CheckboxTag" checked="checked" onclick="updateTag('{{all_tags[i+3]}}')"/>
+                  <span>{{ all_tags[i+3] }}</span>
+                </label>
+              </td>
+              {% endif %}
+              {% if all_tags[i+4] %}
+              <td>
+                <label onclick="updateTag('{{all_tags[i+4]}}')">
+                  <input type="checkbox" class="filled-in" id="{{all_tags[i+4]}}CheckboxTag" checked="checked"/>
+                  <span>{{ all_tags[i+4] }}</span>
+                </label>
+              </td>
+              {% endif %}
+            </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="page-footer" style="margin-top: 300px; background-color: #516290">
+    <div class="container">
+      <div class="row">
+      </div>
+    </div>
+    <div class="footer-copyright">
+      <div class="container">
+      </div>
+    </div>
+  </footer>
+{% endblock %}
