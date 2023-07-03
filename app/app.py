@@ -13,6 +13,8 @@ from flask import (
     render_template,
     request,
 )
+from flask_cors import CORS
+
 from flask_material import Material
 import numpy as np
 
@@ -47,6 +49,7 @@ INDEX_TAG = {idx: tag for tag, idx in TAG_INDEX.items()}
 
 app = Flask(__name__)
 Material(app)
+CORS(app)
 
 
 @app.route('/')
